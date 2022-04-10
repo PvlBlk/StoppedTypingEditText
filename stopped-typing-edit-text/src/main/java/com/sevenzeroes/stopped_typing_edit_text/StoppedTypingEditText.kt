@@ -2,30 +2,28 @@ package com.sevenzeroes.stopped_typing_edit_text
 
 import android.content.Context
 import android.util.AttributeSet
-import android.widget.LinearLayout
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.lifecycle.LifecycleCoroutineScope
 import kotlinx.coroutines.*
-import kotlin.time.Duration.Companion.seconds
 
-val second = 1.seconds.inWholeSeconds
+class StoppedTypingEditText @JvmOverloads constructor(
+    context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = android.R.attr.editTextStyle
+) : AppCompatEditText(context, attrs, defStyleAttr) {
 
-class StoppedTypingEditText(
-    context: Context,
-    private val attrs: AttributeSet,
-    private val scope: LifecycleCoroutineScope
-) : AppCompatEditText(context, attrs) {
-
-    private var delay: Int = 800
+    private var delay: Int = 0
+    private var scope: LifecycleCoroutineScope? = null
+    private var job: Job? = null
 
     init {
         val typedArray = context.obtainStyledAttributes(attrs, R.styleable.StoppedTypingEditText)
-        delay = typedArray.getInt(R.styleable.StoppedTypingEditText_delay, this.delay)
+        delay = typedArray.getInt(R.styleable.StoppedTypingEditText_delay, 0)
+        typedArray.recycle()
     }
 
-    private var callback: (CharSequence) -> Unit = {  }
+    private var callback: (CharSequence) -> Unit = { }
 
-    fun setOnStoppedTyping(callback: (CharSequence) -> Unit) {
+    fun setOnStoppedTyping(scope: LifecycleCoroutineScope, callback: (CharSequence) -> Unit) {
+        this.scope = scope
         this.callback = callback
     }
 
@@ -36,12 +34,22 @@ class StoppedTypingEditText(
         lengthAfter: Int
     ) {
         super.onTextChanged(text, start, lengthBefore, lengthAfter)
-        scope.launch(Dispatchers.IO) {
-            delay(3000)
-            withContext(Dispatchers.Main) {
-                callback.invoke("")
-            }
+        job?.cancel()
+        job = null
+        if (delay!=0){
+            launchCallback()
         }
-        scope.launchWhenResumed {  }
     }
+
+    private fun launchCallback() {
+
+        job = scope?.launch(Dispatchers.IO) {
+            delay(delay.toLong())
+            if (isActive)
+                withContext(Dispatchers.Main) {
+                    callback.invoke("")
+                } else return@launch
+        }
+    }
+
 }
